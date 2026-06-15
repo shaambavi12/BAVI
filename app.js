@@ -36,7 +36,8 @@ let syncEnabled = false, deviceType = FlowDevice.type;
 const S = {
   defaultSecs: 300, maxItems: 20, enforceMax: true, drainMode: true,
   audioTakeover: true, voiceRecog: false, ticking: true,
-  breakCountdown: 5, vibrateAlerts: true, aiBuffer: 30
+  breakCountdown: 5, vibrateAlerts: true, aiBuffer: 30,
+  workFriendlyBreaks: false, microSteps: false, duckAudio: false
 };
 
 // ── Phrasing — restored from the old version, verbatim. Zero new lines. ──
@@ -48,17 +49,17 @@ const ENC_DONE = [
   "Ah, see? Easy.", "You make it look easy.", "There she is."
 ];
 const ENC_OT = [
-  { t: "Hey, you're close...", p: "Almost there, beautiful. Two more minutes?" },
-  { t: "Take a breath...", p: "You're doing so well. A little more time?" },
+  { t: "Hey, you're close...", p: "Almost there, beautiful. Two minutes to end strong?" },
+  { t: "Take a breath...", p: "You're doing so well. Two minutes to finish strong?" },
   { t: "No rush, gorgeous...", p: "You've got this. Two more minutes to finish strong?" },
-  { t: "Still flowing...", p: "Your pace is perfect. Want a little more time?" },
-  { t: "You're magnetic right now...", p: "That focus is something else. Two more minutes?" },
+  { t: "Still flowing...", p: "Your pace is perfect. Two minutes to end strong?" },
+  { t: "You're magnetic right now...", p: "That focus is something else. Two minutes to finish strong?" },
 ];
 const NUDGES = [
-  { t: "Hey, gorgeous...", p: "You went quiet on me. Everything okay? Tap when you're back." },
+  { t: "Hey, gorgeous...", p: "You've gone quiet on me. Everything okay? Tap when you're back." },
   { t: "Still here?", p: "I'm not going anywhere. Take a breath and tap when you're ready." },
-  { t: "Just checking in...", p: "You were doing so well. Whenever you're ready, I'm here." },
-  { t: "Don't disappear on me...", p: "You've already done so much. Come back and finish this." },
+  { t: "Just checking in...", p: "You're doing so well. Whenever you're ready, I'm here." },
+  { t: "Don't disappear on me...", p: "You're so close. Come back and finish this strong." },
 ];
 const BREAKS = [
   { title: "Shake it out", instruction: "Stand up. Shake your arms, legs, whole body. 30 seconds of pure chaos. Go.", secs: 30 },
@@ -67,6 +68,16 @@ const BREAKS = [
   { title: "Power pose", instruction: "Hands on hips. Feet wide. Chin up. You are running this. Hold it.", secs: 30 },
   { title: "Jump break", instruction: "10 jumping jacks. Don't think. Just move. NOW.", secs: 20 },
 ];
+// Work-friendly breaks: quiet, desk-appropriate, nothing you'd be embarrassed
+// to do in an open-plan office or on a call.
+const BREAKS_WORK = [
+  { title: "Eyes off", instruction: "Look at something far away — out a window if you can. Let your eyes soften for twenty seconds.", secs: 20 },
+  { title: "Reset your posture", instruction: "Roll your shoulders back and down. Lengthen your spine. Unclench your jaw. Settle.", secs: 25 },
+  { title: "Quiet breath", instruction: "Slow breath in through your nose for four. Out for six. Three easy rounds. No one will notice.", secs: 30 },
+  { title: "Sip", instruction: "Reach for your water and take a proper drink. Hydration is a feature, not a treat.", secs: 20 },
+  { title: "Stretch your hands", instruction: "Spread your fingers wide, then make a loose fist. Roll the wrists. Ease the typing tension.", secs: 25 },
+];
+function activeBreaks() { return S.workFriendlyBreaks ? BREAKS_WORK : BREAKS; }
 // The old completion line, kept verbatim as the default. The language AI may
 // swap ONLY the middle "first sip" clause for one that fits the routine just run.
 const COMPLETE_PRE = "You did it. Every single one.";
@@ -76,6 +87,12 @@ const COMPLETE_POST = "Enjoy it, beautiful.";
 const DONE_WORDS = ['done', 'yep', 'next', 'now what', 'ok', 'okay', 'yes', 'finished', 'complete', 'check'];
 
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// Untitled flows get a timestamped name: Flo_HH:MM:SS_DDMMMYYYY
+function defaultFlowName(prefix = 'Flo') {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+  return `${prefix}_${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}_${p(d.getDate())}${mon}${d.getFullYear()}`;
+}
 async function nextFromBag(key, pool) {
   let bag = await getSetting(key, []);
   if (!Array.isArray(bag) || !bag.length) bag = shuffle([...Array(pool.length).keys()]);
@@ -88,6 +105,9 @@ async function nextFromBag(key, pool) {
 // TASK PARSING (minutes + seconds aware)
 // ═══════════════════════════════════════════
 function parseTasks(text) {
+  // "boom" (dictated by speech-to-text) acts like pressing Enter — it starts a
+  // new task on its own line. Works mid-line too: "deep work boom stretch 1min".
+  text = text.replace(/\bboom\b/gi, '\n');
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const out = [];
   for (const line of lines) {
@@ -112,6 +132,23 @@ function parseTasks(text) {
 // A sequence stores flow IDs; tasks are expanded fresh at launch, so editing
 // a block (e.g. your Coffee flow) updates every sequence that uses it.
 // ═══════════════════════════════════════════
+// Optional "Sip / Bite" micro-steps: a tiny cue at the very start and a quick
+// one right after each real step — a beat to hydrate or grab a bite before the
+// next thing. Short by design (12s) so they never derail the flow.
+const MICRO_CUES = [
+  { label: 'Sip 💧', secs: 12 },
+  { label: 'Bite 🍴', secs: 12 },
+];
+function withMicroSteps(arr) {
+  const out = [];
+  let k = 0;
+  out.push({ ...MICRO_CUES[0], micro: true });           // auto first step
+  arr.forEach((t, i) => {
+    out.push(t);
+    if (i < arr.length - 1) out.push({ ...MICRO_CUES[(++k) % MICRO_CUES.length], micro: true });
+  });
+  return out;
+}
 async function expandFlowTasks(flow) {
   if (!flow) return [];
   if (flow.type !== 'sequence') {
@@ -184,6 +221,14 @@ async function renderSequenceEditor() {
     availEl.appendChild(div);
   }
 }
+// From the library: spin up a fresh sequence already holding this flow.
+async function addToSequence(flowId) {
+  haptic(40);
+  await openSequenceEditor();
+  seqBlocks = [flowId];
+  renderSequenceEditor();
+  toast('New sequence — add more flows below');
+}
 function addSeqBlock(id) { haptic(40); seqBlocks.push(id); renderSequenceEditor(); }
 function removeSeqBlock(i) { haptic(40); seqBlocks.splice(i, 1); renderSequenceEditor(); }
 function moveSeqBlock(i, dir) {
@@ -193,7 +238,7 @@ function moveSeqBlock(i, dir) {
 async function saveSequence(run) {
   haptic(120);
   if (!seqBlocks.length) { toast('Add at least one block'); return; }
-  const name = document.getElementById('seqTitle').value.trim() || 'Untitled sequence';
+  const name = document.getElementById('seqTitle').value.trim() || defaultFlowName('Seq');
   let flow;
   if (seqEditingId) {
     flow = await getFlow(seqEditingId);
@@ -226,15 +271,61 @@ function showScreen(name) {
   // Global PiP button: show during runner + breathing if supported
   const gpip = document.getElementById('globalPipBtn');
   if (gpip) gpip.style.display = isFlow && pipSupported() ? 'flex' : 'none';
+  // Phone hardware-back trap is live only inside a flow.
+  if (isFlow) armFlowBackTrap(); else disarmFlowBackTrap();
   if (window.Nav) Nav.onScreen(name);
 }
 function handleBack() {
-  if (currentScreen === 'runner' || currentScreen === 'breathing') return stopSequence();
+  // In a flow (runner or breathing) the back gesture should never silently bail
+  // — it pauses and asks. The phone hardware-back path goes through popstate
+  // below; this covers the on-screen / remote back affordances.
+  if (currentScreen === 'runner' || currentScreen === 'breathing') return showFlowBackPrompt();
   if (currentScreen === 'complete') return resetApp();
   renderHome();
 }
 window.handleBack = handleBack;
 function goBack() { haptic(40); handleBack(); }
+
+// ── Phone hardware-back handling ──
+// When a flow (or its breathing lead-in) is on screen we keep a "trap" entry on
+// the history stack. Pressing the phone's Back button pops it, which fires
+// popstate — we intercept, re-arm the trap, and show a Pause / Exit prompt
+// instead of letting the app fall out of the flow.
+let _flowBackArmed = false, _flowBackWasRunning = false;
+function armFlowBackTrap() {
+  if (_flowBackArmed) return;
+  _flowBackArmed = true;
+  try { history.pushState({ flowTrap: true }, ''); } catch (e) {}
+}
+function disarmFlowBackTrap() { _flowBackArmed = false; }
+window.addEventListener('popstate', () => {
+  if (currentScreen === 'runner' || currentScreen === 'breathing') {
+    // Re-arm so a second back press also lands here, then prompt.
+    _flowBackArmed = false; armFlowBackTrap();
+    showFlowBackPrompt();
+  }
+});
+function showFlowBackPrompt() {
+  const ov = document.getElementById('flowBackOverlay');
+  if (!ov) return;
+  haptic(60);
+  // Pause anything that's actually counting so the world stops while they decide.
+  _flowBackWasRunning = running && !paused && currentScreen === 'runner';
+  if (_flowBackWasRunning) togglePauseTimer();
+  ov.classList.add('active');
+}
+function flowBackResume() {
+  document.getElementById('flowBackOverlay').classList.remove('active');
+  haptic(40);
+  if (_flowBackWasRunning && paused) togglePauseTimer();
+  _flowBackWasRunning = false;
+}
+function flowBackExit() {
+  document.getElementById('flowBackOverlay').classList.remove('active');
+  disarmFlowBackTrap();
+  _flowBackWasRunning = false;
+  stopSequence();
+}
 
 // ═══════════════════════════════════════════
 // HOME
@@ -290,6 +381,7 @@ async function renderLibrary() {
         <div class="lib-actions">
           ${tvBtn}
           ${pipBtn}
+          ${flow.type !== 'sequence' ? `<button class="lib-btn focusable" onclick="addToSequence('${flow.id}')" title="Start a sequence with this flow" aria-label="Add to a sequence">⧉</button>` : ''}
           <button class="lib-btn focusable" onclick="editItem('${flow.id}')" title="Edit" aria-label="Edit">✎</button>
           <button class="lib-btn focusable" onclick="togglePin('${flow.id}').then(renderLibrary)" title="Pin to home" aria-label="Pin">${flow.pinned ? '◆' : '◇'}</button>
           <button class="lib-btn focusable" onclick="toggleArchive('${flow.id}').then(renderLibrary)" title="${flow.archived ? 'Restore' : 'Archive — hide but keep'}" aria-label="Archive">${flow.archived ? '↩' : '⊘'}</button>
@@ -349,28 +441,36 @@ function renderEditorPreview() {
   if (S.enforceMax && editorTasks.length > S.maxItems) { editorTasks = editorTasks.slice(0, S.maxItems); trimmed = true; }
   const listEl = document.getElementById('previewList');
   listEl.innerHTML = '';
-  const total = editorTasks.reduce((s, t) => s + t.secs, 0);
+  const liveTasks = editorTasks.filter(t => !t.muted);
+  const total = liveTasks.reduce((s, t) => s + t.secs, 0);
+  const mutedCount = editorTasks.length - liveTasks.length;
   document.getElementById('previewSummary').innerHTML =
-    `${editorTasks.length} ${editorTasks.length === 1 ? 'task' : 'tasks'} · ${fmtDur(total)} total` +
+    `${liveTasks.length} ${liveTasks.length === 1 ? 'task' : 'tasks'} · ${fmtDur(total)} total` +
+    (mutedCount ? ` <span class="trim-note">· ${mutedCount} muted</span>` : '') +
     (trimmed ? ` <span class="trim-note">· capped at ${S.maxItems}</span>` : '');
   editorTasks.forEach((task, i) => {
     const mins = Math.floor(task.secs / 60), secs = task.secs % 60;
     const div = document.createElement('div');
-    div.className = 'preview-item';
+    div.className = 'preview-item' + (task.muted ? ' muted' : '');
     div.setAttribute('data-idx', i);
     div.draggable = false; // touch drag handled manually
     div.innerHTML = `
       <div class="drag-handle" title="Hold and drag to reorder" style="cursor:grab;padding:0 6px 0 2px;color:var(--muted-2);display:flex;align-items:center;flex-shrink:0;touch-action:none">
         <svg width="14" height="20" viewBox="0 0 14 20" fill="currentColor" opacity=".6"><circle cx="4" cy="4" r="2"/><circle cx="10" cy="4" r="2"/><circle cx="4" cy="10" r="2"/><circle cx="10" cy="10" r="2"/><circle cx="4" cy="16" r="2"/><circle cx="10" cy="16" r="2"/></svg>
       </div>
-      <div class="preview-num-tap" title="Tap to change position" onclick="promptMoveTask(${i})" style="width:24px;height:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(201,183,156,.12);color:var(--gold);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;-webkit-tap-highlight-color:transparent">${i + 1}</div>
+      <div class="preview-num-tap" title="Double-tap to type a new position" ondblclick="promptMoveTask(${i})" onclick="promptMoveTask(${i})" style="width:24px;height:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(201,183,156,.12);color:var(--gold);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;cursor:pointer;-webkit-tap-highlight-color:transparent">${i + 1}</div>
       <div class="preview-body">
         <input class="preview-label focusable" value="${esc(task.label)}" aria-label="Task name" onchange="updateEditorTask(${i},'label',this.value)" />
         <div class="preview-time-row">
-          <input class="preview-time focusable" type="number" value="${mins}" min="0" max="120" aria-label="Minutes" onchange="updateEditorSecs(${i}, this.value, null)" /><span class="t-unit">m</span>
-          <input class="preview-time focusable" type="number" value="${secs}" min="0" max="59" aria-label="Seconds" onchange="updateEditorSecs(${i}, null, this.value)" /><span class="t-unit">s</span>
+          <input class="preview-time focusable" type="number" value="${mins}" min="0" max="120" aria-label="Minutes" ondblclick="this.select()" onchange="updateEditorSecs(${i}, this.value, null)" /><span class="t-unit">m</span>
+          <input class="preview-time focusable" type="number" value="${secs}" min="0" max="59" aria-label="Seconds" ondblclick="this.select()" onchange="updateEditorSecs(${i}, null, this.value)" /><span class="t-unit">s</span>
         </div>
       </div>
+      <button class="mute-btn focusable ${task.muted ? 'on' : ''}" onclick="toggleMuteTask(${i})" aria-label="${task.muted ? 'Unmute task' : 'Mute task — leave it out of the total'}" title="${task.muted ? 'Muted — not counted in the total' : 'Mute — see the total without this task'}">
+        ${task.muted
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>'}
+      </button>
       <button class="preview-remove focusable" onclick="removeEditorTask(${i})" aria-label="Remove">✕</button>`;
     listEl.appendChild(div);
   });
@@ -500,6 +600,14 @@ function moveTask(i, dir) {
   renderEditorPreview();
 }
 function removeEditorTask(i) { haptic(40); editorTasks.splice(i, 1); renderEditorPreview(); }
+// Mute a task to instantly see the total without it — a what-if, not a delete.
+// Muted tasks are excluded from the total here and dropped when you save/run.
+function toggleMuteTask(i) {
+  if (!editorTasks[i]) return;
+  haptic(50);
+  editorTasks[i].muted = !editorTasks[i].muted;
+  renderEditorPreview();
+}
 function addEditorTask() {
   if (S.enforceMax && editorTasks.length >= S.maxItems) { toast(`Capped at ${S.maxItems} tasks`); return; }
   haptic(40);
@@ -513,8 +621,10 @@ function backToPaste() {
 }
 async function persistFlow(run) {
   haptic(120);
+  // Muted tasks are a preview-only what-if — they don't get saved into the flow.
+  editorTasks = editorTasks.filter(t => !t.muted);
   if (!editorTasks.length) { toast('Add at least one task'); return; }
-  const name = document.getElementById('editorTitle').value.trim() || 'Untitled flow';
+  const name = document.getElementById('editorTitle').value.trim() || defaultFlowName('Flo');
   let flow;
   if (editingFlowId) {
     flow = await getFlow(editingFlowId);
@@ -632,11 +742,12 @@ function runBreath() {
       return;
     }
     if (ph.hold) {
-      // Smooth, continuous pulse: eased in & out, exactly 4 cycles over 4s.
-      // sin² gives a velvety 0→1→0 swell with zero jerk at the turnarounds.
-      const cycles = 4;
-      const swell = Math.pow(Math.sin(Math.PI * cycles * t), 2);
-      const amp = (maxR - minR) * 0.045;          // subtle — a breath within the hold
+      // Two bounces on each hold, one second per bounce (sin² completes one
+      // full 0→1→0 swell per second). After the 2 bounces the orb sits still
+      // for the rest of the (4s) counted hold.
+      const elapsedSec = t * ph.dur / 1000;
+      const swell = elapsedSec < 2 ? Math.pow(Math.sin(Math.PI * elapsedSec), 2) : 0;
+      const amp = (maxR - minR) * 0.07;            // visible — a real bounce, not a flutter
       r = ph.from + (ph.from === maxR ? -amp * swell : amp * swell);
       // Counted hold: 1 2 3 4 changing on the second (old version's mechanism)
       const c = Math.min(4, Math.floor(t * 4) + 1);
@@ -708,7 +819,7 @@ async function launchFlow(flowId, startAt) {
   currentFlow = flow;
   const expanded = await expandFlowTasks(flow);
   if (!expanded.length) return;
-  tasks = expanded;
+  tasks = S.microSteps ? withMicroSteps(expanded) : expanded;
   // Language AI quietly drafts a routine-specific closer while you flow (falls
   // back to the original "first sip" line if it isn't ready or isn't set up).
   try { if (window.AI) AI.prepareCloser(flow, tasks); } catch (e) {}
@@ -859,12 +970,21 @@ function renderOrb() {
   // Perceptual curve: pow > 1 makes the ring *look* like it empties a touch
   // faster than real time early on — subtle urgency without lying about digits.
   const curved = Math.pow(frac, 1.22);
-  const shown = S.drainMode ? curved : 1 - curved;
-  const deg = shown * 360;
   const drain = document.getElementById('orbDrain'); if (!drain) return;
-  drain.style.opacity = shown > 0.001 ? '1' : '0';
-  // from 0deg = starts (and ends) at 12 o'clock, like the old version
-  drain.style.background = `conic-gradient(from 0deg, var(--gold-bright) 0deg, var(--gold) ${deg * 0.55}deg, var(--gold-deep) ${deg}deg, transparent ${deg}deg)`;
+  if (S.drainMode) {
+    // EMPTIES CLOCKWISE: the remaining gold arc shrinks with its leading edge
+    // sweeping clockwise from 12 o'clock. The spent (transparent) wedge grows
+    // clockwise from the top as time runs down.
+    const remDeg = curved * 360;
+    const emptyDeg = 360 - remDeg;
+    drain.style.opacity = remDeg > 0.3 ? '1' : '0';
+    drain.style.background = `conic-gradient(from 0deg, transparent 0deg, transparent ${emptyDeg}deg, var(--gold-deep) ${emptyDeg}deg, var(--gold) ${emptyDeg + remDeg * 0.45}deg, var(--gold-bright) 360deg)`;
+  } else {
+    // FILLS CLOCKWISE from 12 o'clock as time passes.
+    const deg = (1 - curved) * 360;
+    drain.style.opacity = deg > 0.3 ? '1' : '0';
+    drain.style.background = `conic-gradient(from 0deg, var(--gold-bright) 0deg, var(--gold) ${deg * 0.55}deg, var(--gold-deep) ${deg}deg, transparent ${deg}deg)`;
+  }
   drawPiP();
 }
 function setOrbRunning(on) { document.getElementById('timerOrb')?.classList.toggle('running', on && !paused); }
@@ -919,7 +1039,9 @@ function updTimer() {
 }
 function updProgress() {
   document.getElementById('progressFill').style.width = (ci / tasks.length) * 100 + '%';
-  document.getElementById('stepCount').textContent = `${ci} / ${tasks.length}`;
+  // Show the CURRENT task number (matches "Task X of Y" up top) — not the
+  // completed count, which is what made the counters disagree.
+  document.getElementById('stepCount').textContent = `${Math.min(ci + 1, tasks.length)} / ${tasks.length}`;
   document.getElementById('etaInfo').textContent = 'ETA ' + fmtTime(calcETA());
 }
 function calcETA() { let rem = remainingSec(); for (let i = ci + 1; i < tasks.length; i++) rem += tasks[i].secs; return new Date(Date.now() + Math.max(0, rem) * 1000); }
@@ -1147,7 +1269,10 @@ function drawPiP() {
 
     if (frac > 0.002) {
       ctx.beginPath();
-      ctx.arc(CX, CY, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+      // Empties clockwise: the arc's start edge sweeps clockwise as time runs
+      // down, the end edge stays pinned at 12 o'clock.
+      const startA = -Math.PI / 2 + Math.PI * 2 * (1 - frac);
+      ctx.arc(CX, CY, R, startA, -Math.PI / 2 + Math.PI * 2);
       const ringGrd = ctx.createLinearGradient(CX - R, CY, CX + R, CY);
       ringGrd.addColorStop(0, '#9a8662'); ringGrd.addColorStop(0.5, '#c9b79c'); ringGrd.addColorStop(1, '#ecdcb4');
       ctx.strokeStyle = sl < 0 ? '#e6a98c' : ringGrd; ctx.stroke();
@@ -1287,7 +1412,7 @@ function showOvertime() {
   document.getElementById('overtimeOverlay').classList.add('active');
   speak(e.t + ' ' + e.p);
 }
-function overtimeAddTime() { document.getElementById('overtimeOverlay').classList.remove('active'); clearTimeout(nudgeTimer); addTime(2, true); speak("Two more minutes. You've got this."); }
+function overtimeAddTime() { document.getElementById('overtimeOverlay').classList.remove('active'); clearTimeout(nudgeTimer); addTime(2, true); speak("Two minutes to finish strong. You've got this."); }
 function overtimeDone() { document.getElementById('overtimeOverlay').classList.remove('active'); clearTimeout(nudgeTimer); markDone(); }
 
 function showNudge() {
@@ -1321,7 +1446,8 @@ let breakTi = null;
 function breakOverlayActive() { return document.getElementById('breakScreen2').classList.contains('active'); }
 function showBreakScreen() {
   running = false; stopTicking();
-  const b = BREAKS[Math.floor(Math.random() * BREAKS.length)];
+  const set = activeBreaks();
+  const b = set[Math.floor(Math.random() * set.length)];
   document.getElementById('breakTitle').textContent = b.title;
   document.getElementById('breakInstruction').textContent = b.instruction;
   document.getElementById('breakTimer').textContent = '';
@@ -1422,6 +1548,9 @@ async function openSettings() {
   document.getElementById('syncSpaceInput').value = await getSetting('syncSpace', '');
   document.getElementById('doneWordsList').textContent = DONE_WORDS.join(' · ');
   document.getElementById('breakCountdownInput').value = S.breakCountdown;
+  document.getElementById('workFriendlyToggle').checked = S.workFriendlyBreaks;
+  document.getElementById('microStepsToggle').checked = S.microSteps;
+  document.getElementById('duckAudioToggle').checked = S.duckAudio;
   document.getElementById('vibrateToggle').checked = S.vibrateAlerts;
   document.getElementById('aiBufferInput').value = S.aiBuffer;
   document.getElementById('deviceTypeSelect').value = await getSetting('deviceTypeOverride', 'auto');
@@ -1443,6 +1572,9 @@ async function toggleVibrate() {
   await setSetting('vibrateAlerts', S.vibrateAlerts);
   if (el.checked) haptic(120);
 }
+async function toggleWorkFriendly() { S.workFriendlyBreaks = document.getElementById('workFriendlyToggle').checked; await setSetting('workFriendlyBreaks', S.workFriendlyBreaks); }
+async function toggleMicroSteps() { S.microSteps = document.getElementById('microStepsToggle').checked; await setSetting('microSteps', S.microSteps); }
+async function toggleDuckAudio() { S.duckAudio = document.getElementById('duckAudioToggle').checked; await setSetting('duckAudio', S.duckAudio); window.flowDuckAudio = S.duckAudio; }
 async function saveAiBuffer() {
   S.aiBuffer = Math.max(0, Math.min(300, parseInt(document.getElementById('aiBufferInput').value) || 30));
   await setSetting('aiBuffer', S.aiBuffer);
@@ -1571,8 +1703,12 @@ async function loadSettings() {
   S.breakCountdown = await getSetting('breakCountdown', 5);
   S.vibrateAlerts = await getSetting('vibrateAlerts', true);
   S.aiBuffer = await getSetting('aiBuffer', 30);
+  S.workFriendlyBreaks = await getSetting('workFriendlyBreaks', false);
+  S.microSteps = await getSetting('microSteps', false);
+  S.duckAudio = await getSetting('duckAudio', false);
   const ov = await getSetting('deviceTypeOverride', 'auto');
   deviceType = (ov && ov !== 'auto') ? ov : FlowDevice.type;
+  window.flowDuckAudio = S.duckAudio;
 }
 async function initApp() {
   await loadSettings();

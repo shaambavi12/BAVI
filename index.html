@@ -105,7 +105,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opac
 .lib-name{font-size:14.5px;font-weight:500;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lib-name .pin-icon{color:var(--gold);font-size:10px}
 .lib-meta{font-size:11px;font-weight:400;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lib-actions{display:flex;justify-content:flex-end;gap:2px;padding:0 9px 7px;flex-shrink:0}
+.lib-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px;padding:0 9px 7px;flex-shrink:0}
 .lib-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted-2);cursor:pointer;font-size:15px;border-radius:9px;transition:color .2s,background .2s;-webkit-tap-highlight-color:transparent}
 .lib-btn:hover{color:var(--bone);background:var(--surface)} .lib-del:hover{color:#f0928a}
 
@@ -136,6 +136,16 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opac
 .reorder-btn:hover:not(:disabled){color:var(--gold)} .reorder-btn:disabled{opacity:.25;cursor:default}
 .preview-remove{background:none;border:none;color:var(--muted-2);cursor:pointer;font-size:14px;padding:5px;flex-shrink:0;-webkit-tap-highlight-color:transparent}
 .preview-remove:hover{color:#f0928a}
+/* Mute a task to see the total without it. The key sits at 75% brightness,
+   glows to 120% when active; the task itself goes struck-through + dulled. */
+.mute-btn{width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted);cursor:pointer;border-radius:9px;filter:brightness(.75);transition:filter .2s,color .2s,background .2s;-webkit-tap-highlight-color:transparent}
+.mute-btn svg{width:18px;height:18px}
+.mute-btn:hover{background:var(--surface)}
+.mute-btn.on{color:var(--gold);filter:brightness(1.2)}
+.preview-item.muted{opacity:.45}
+.preview-item.muted .preview-label{text-decoration:line-through;text-decoration-color:var(--muted-2);color:var(--muted)}
+.preview-item.muted .preview-time{text-decoration:line-through;text-decoration-color:var(--muted-2)}
+.preview-item.muted .preview-num-tap{background:rgba(255,255,255,.05)!important;color:var(--muted-2)!important}
 .editor-btns{display:flex;gap:10px;flex-shrink:0;padding-top:2px}
 .editor-mini{font-size:12px;padding:9px;flex:0 0 auto}
 
@@ -347,6 +357,45 @@ body.remote-active .icon-btn.done:focus{box-shadow:0 0 0 3px var(--gold-bright),
   .timer-orb{width:min(56vh,520px);height:min(56vh,520px)}
 }
 body.tv .hdr-btn{width:44px;height:44px} body.tv .hdr-btn svg{width:24px;height:24px}
+
+/* ── Themed dropdowns ── keep selects on-brand instead of the OS default.
+   (The native option popup itself is OS-drawn; we style the control + options
+   as far as the platform allows.) */
+select.set-input,select.jump-select,select.field{
+  appearance:none;-webkit-appearance:none;-moz-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c9b79c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:15px;padding-right:36px;cursor:pointer}
+select.set-input option,select.jump-select option,select.field option{background:var(--raised);color:var(--bone)}
+
+/* ── Settings: lock to vertical scroll only (kills the stray sideways drift) ── */
+.settings-content{overflow-x:hidden}
+.settings-content .time-pickers{flex-wrap:wrap}
+.settings-content .speed-snaps,.settings-content .set-row{max-width:100%}
+.settings-content input,.settings-content select{max-width:100%}
+
+/* ── Flow back-button prompt (phone hardware back / remote back inside a flow) ── */
+#flowBackOverlay .btns{flex-direction:column;width:100%;max-width:300px}
+#flowBackOverlay .ov-btn{width:100%;justify-content:center}
+
+/* ── Home & Library polish — warmer, more tactile, mobile-first ── */
+.home-greeting{letter-spacing:-.01em}
+.home-sub{letter-spacing:.01em}
+.pinned-card{position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(124,107,191,.10),rgba(21,17,31,.9) 60%)}
+.pinned-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold-metal);opacity:.7}
+.pinned-card{padding-left:19px}
+.pinned-card:active{transform:scale(.98);border-color:rgba(201,183,156,.4)}
+.home-btn.primary{box-shadow:0 8px 30px -12px rgba(201,183,156,.6)}
+.home-btn.secondary{backdrop-filter:blur(4px)}
+.library-item{transition:border-color .25s,transform .15s}
+.library-item:active{transform:scale(.995)}
+.lib-main:active .lib-name{color:var(--gold-bright)}
+.lib-tab{letter-spacing:.02em}
+/* comfortable thumb targets on phones */
+@media(hover:none){
+  .home-btn{padding:17px}
+  .lib-btn{width:40px;height:40px}
+  .icon-btn{min-width:52px}
+}
 </style>
 </head>
 <body>
@@ -429,15 +478,16 @@ Break 5"></textarea>
         <div class="editor-preview" id="editorPreview" hidden>
           <div class="preview-summary" id="previewSummary"></div>
           <div class="preview-list" id="previewList"></div>
+          <div class="editor-help" style="flex-shrink:0">Times are yours to set — type straight into any box. Or tap <b>✦ AI timings</b> to draft them from your history, then tweak. Mute 🔇 a task to see the total without it.</div>
           <div class="editor-btns">
             <button class="home-btn secondary editor-mini focusable" onclick="addEditorTask()">+ Add task</button>
             <button class="home-btn secondary editor-mini focusable" onclick="aiDraftTimings()">✦ AI timings</button>
+            <button class="home-btn secondary editor-mini focusable" onclick="backToPaste()">← Text</button>
           </div>
-          <button class="home-btn secondary editor-mini focusable" onclick="backToPaste()">← Back to text</button>
           <div class="editor-btns">
             <button class="home-btn secondary focusable" onclick="saveEditorFlow()">Save</button>
             <button class="home-btn primary focusable" onclick="saveAndRunEditorFlow()">Save &amp; run</button>
-            <button class="home-btn secondary focusable" id="saveRunPipBtn" onclick="saveAndRunInPiP()" style="flex:0 0 auto;padding:15px 12px;font-size:12px">
+            <button class="home-btn secondary focusable" id="saveRunPipBtn" onclick="saveAndRunInPiP()" style="flex:0 0 auto;padding:15px 14px;font-size:12px" aria-label="Save and run in picture-in-picture">
               <svg style="display:inline-block;vertical-align:middle;margin-right:4px" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="11" y="10" width="7" height="5" rx="1" fill="currentColor"/></svg>PiP
             </button>
           </div>
@@ -556,6 +606,8 @@ Break 5"></textarea>
           <div class="set-row"><span class="set-row-label">Timer drains (empties)</span><input type="checkbox" class="switch focusable" id="drainToggle" onchange="toggleDrain()" checked></div>
           <div class="set-row"><span class="set-row-label">Take over audio while running</span><input type="checkbox" class="switch focusable" id="takeoverToggle" onchange="toggleTakeover()" checked></div>
           <div class="set-hint" style="margin-top:-4px">Pauses your music or podcast while a flow plays, like a navigation app.</div>
+          <div class="set-row"><span class="set-row-label">Only duck around prompts</span><input type="checkbox" class="switch focusable" id="duckAudioToggle" onchange="toggleDuckAudio()"></div>
+          <div class="set-hint" style="margin-top:-4px">Let a podcast or audiobook keep playing, pausing only while FlowState speaks or chimes — then it picks back up. (Music can't be volume-ducked from the web, so it pauses too.)</div>
           <div class="set-row"><span class="set-row-label">Background beat</span><input type="checkbox" class="switch focusable" id="tickingToggle" onchange="toggleTicking()" checked></div>
           <div class="set-row"><span class="set-row-label">Voice control (say “done”)</span><input type="checkbox" class="switch focusable" id="voiceRecogToggle" onchange="toggleVoiceRecog()"></div>
           <div class="done-words" id="doneWordsList"></div>
@@ -587,6 +639,10 @@ Break 5"></textarea>
           <label>Breaks</label>
           <div class="set-hint">Mid-flow breaks start by themselves after this countdown. "Hold on a sec" pauses it; tap I'm ready to begin.</div>
           <div class="time-pickers"><input type="number" id="breakCountdownInput" class="mini-num focusable" min="1" max="30" value="5" onchange="saveBreakCountdown()" /><span>sec countdown before a break starts</span></div>
+          <div class="set-row"><span class="set-row-label">Work-friendly breaks</span><input type="checkbox" class="switch focusable" id="workFriendlyToggle" onchange="toggleWorkFriendly()"></div>
+          <div class="set-hint" style="margin-top:-4px">Swaps shake-it-out and floor time for quiet, desk-appropriate resets — eyes off the screen, posture, a sip of water. Nothing you'd mind doing on a call.</div>
+          <div class="set-row"><span class="set-row-label">Sip &amp; bite cues</span><input type="checkbox" class="switch focusable" id="microStepsToggle" onchange="toggleMicroSteps()"></div>
+          <div class="set-hint" style="margin-top:-4px">Slips a quick 12-second "sip" or "bite" step in at the start and after each task — a beat to hydrate or grab a mouthful before the next thing.</div>
         </div>
         <div class="setting-group">
           <label>Alerts</label>
@@ -633,7 +689,7 @@ Break 5"></textarea>
         </div>
         <input type="file" id="importInput" accept=".json" onchange="handleImport(event)" />
       </div>
-      <div class="settings-footer">BAVI FlowState v15</div>
+      <div class="settings-footer">BAVI FlowState v17</div>
     </div>
 
   </div><!-- /main -->
@@ -653,6 +709,15 @@ Break 5"></textarea>
     <div class="btns">
       <button class="ov-btn focusable" onclick="overtimeAddTime()">+2 min</button>
       <button class="ov-btn gold focusable" onclick="overtimeDone()">Done ✓</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="flowBackOverlay">
+    <h3>Hold on…</h3>
+    <p>You're mid-flow. Want to keep going, or step out?</p>
+    <div class="btns">
+      <button class="ov-btn gold focusable" onclick="flowBackResume()">Keep going</button>
+      <button class="ov-btn subtle focusable" onclick="flowBackExit()">Exit flow</button>
     </div>
   </div>
 

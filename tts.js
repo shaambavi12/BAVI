@@ -11,6 +11,8 @@ let elVoiceId = '';
 let elVoicesCache = null;
 let elSpeed = 1.0;
 let audioTakeover = true;                // pause other apps' audio while a flow runs
+let audioDuck = false;                   // only grab focus around prompts, then hand it back
+let _flowAudioRunning = false;           // is a flow (or its breathing lead-in) live?
 let speechQueue = [];
 let isSpeaking = false;
 let selBrowserVoice = null;
@@ -35,11 +37,26 @@ async function processText(text) {
 
 // ── Audio focus: take over the system audio session like a nav app ──
 function setAudioMode(running) {
+  _flowAudioRunning = running;
+  audioDuck = !!window.flowDuckAudio;
   try {
     if ('audioSession' in navigator) {
       // 'playback' takes audio focus (pauses Spotify/podcasts); 'ambient' mixes.
-      navigator.audioSession.type = running ? (audioTakeover ? 'playback' : 'ambient') : 'auto';
+      // Duck mode rests in 'ambient' and only grabs 'playback' around prompts
+      // (see speechFocus) so podcasts/audiobooks pause then resume, instead of
+      // staying paused for the whole flow.
+      const rest = audioTakeover ? (audioDuck ? 'ambient' : 'playback') : 'ambient';
+      navigator.audioSession.type = running ? rest : 'auto';
     }
+  } catch (e) {}
+}
+// Grab audio focus just for the duration of a spoken line / chime, then return
+// to the flow's resting mode. Other apps' audio pauses while we talk and picks
+// back up after — the closest the web gets to ducking.
+function speechFocus(on) {
+  if (!audioDuck || !audioTakeover || !_flowAudioRunning) return;
+  try {
+    if ('audioSession' in navigator) navigator.audioSession.type = on ? 'playback' : 'ambient';
   } catch (e) {}
 }
 
@@ -189,6 +206,7 @@ function speak(text, cb) {
 async function processQueue() {
   if (isSpeaking || !speechQueue.length) return;
   isSpeaking = true;
+  speechFocus(true);                                              // duck other audio while we talk
   const { text, cb } = speechQueue.shift();
   const processed = await processText(text);
   try { if (window.flowVibe) window.flowVibe(); } catch (e) {}   // buzz the instant it speaks
@@ -196,7 +214,8 @@ async function processQueue() {
   if (!elOk) await browserSpeak(processed);
   isSpeaking = false;
   if (cb) cb();
-  processQueue();
+  if (speechQueue.length) processQueue();
+  else speechFocus(false);                                        // hand audio back so it resumes
 }
 
 function cancelSpeech() {

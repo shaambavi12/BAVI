@@ -1,4 +1,4 @@
-# BAVI FlowState v13
+# BAVI FlowState v17
 
 Works fully offline on any one device. Set up sync (below, ~5 minutes, once)
 to share one library + history across phone, TV and laptop, and to send a
@@ -46,6 +46,28 @@ adb shell am start -a android.intent.action.VIEW -d "https://YOUR-HOST/index.htm
 ```
 The TV pulls the latest library from sync before launching, so a flow you
 saved on your phone seconds earlier will be found.
+
+## What's new in v17 (feedback pass)
+- **Breath-work holds** now bounce twice, one second per bounce (was 4×/0.5s).
+- **Timer empties clockwise** — the gold ring drains with its edge sweeping
+  clockwise from 12 o'clock, in the orb and in PiP.
+- **Mute a task** in the editor (🔇) to see the total without it — the row goes
+  struck-through and dulled, the mute key glows to 120%; muted rows aren't saved.
+- **Phone back button mid-flow** no longer bails silently — it pauses and asks
+  *Keep going / Exit flow* (covers the breathing lead-in too).
+- **Untitled flows** auto-name `Flo_HH:MM:SS_DDMMMYYYY`; sequences use `Seq_…`.
+- **"boom"** in pasted/dictated text acts like Enter — it starts a new task.
+- **Double-tap** a time box to retype it; double-tap a task number to type a new
+  position (the rest reflow as if dragged there). Long-press the handle to drag.
+- **Work-friendly breaks** (Settings → Breaks): quiet, desk-appropriate resets.
+- **Sip & bite cues** (optional): a 12-second hydrate/bite beat at the start and
+  after each task.
+- **Duck around prompts** (Settings → audio): a podcast/audiobook keeps playing
+  and only pauses while FlowState speaks, then resumes (web can't volume-duck
+  music, so music still pauses).
+- **Themed dropdowns**, **settings stops drifting sideways**, present-tense
+  encouragement, and the *finish strong* / *end strong* overtime line restored.
+- Library gains an **⧉ add-to-sequence** shortcut; editor buttons regrouped.
 
 ## Notes
 - Rotation: the app now follows each device's own rotation/auto-rotate

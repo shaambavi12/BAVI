@@ -1,6 +1,6 @@
 // Bump this every release — activating a new version purges every old cache,
 // so a fresh deploy can never get tangled with stale files again.
-const CACHE_NAME = 'flowstate-v15';
+const CACHE_NAME = 'flowstate-v17';
 const ASSETS = [
   './', './index.html',
   './db.js', './tts.js', './sync.js', './nav.js', './ai.js', './app.js',
