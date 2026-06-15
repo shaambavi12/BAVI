@@ -1,0 +1,17 @@
+{
+  "name": "FlowState",
+  "short_name": "FlowState",
+  "description": "Timed task sequencer with voice — for phone and TV.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "lang": "en-AU",
+  "display": "standalone",
+  "background_color": "#08070e",
+  "theme_color": "#08070e",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

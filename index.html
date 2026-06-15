@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#08070e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FlowState</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+[hidden]{display:none!important}
+:root{
+  --bg:#08070e; --bg-2:#0e0b18; --raised:#15111f; --surface:rgba(255,255,255,.035); --surface-2:rgba(255,255,255,.06);
+  --violet:#7c6bbf; --violet-deep:#3a2f63; --violet-glow:#6d5bb0; --lav:#e6e1f3;
+  --gold:#c9b79c; --gold-bright:#ecdcb4; --gold-deep:#9a8662;
+  --bone:#efeaf2; --muted:#a59cb8; --muted-2:#76708c;
+  --line:rgba(201,183,156,.16); --ok:#8fd3b0; --warm:#e6a98c;
+  --gold-metal:linear-gradient(135deg,#ecdcb4 0%,#cdb892 46%,#9a8662 100%);
+  --halo:0 0 0 1px rgba(201,183,156,.30),0 0 26px -4px rgba(201,183,156,.45),0 0 72px -22px rgba(201,183,156,.30);
+  --f-display:'Playfair Display',Georgia,serif;
+  --f-body:'Inter',-apple-system,system-ui,sans-serif;
+  --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
+  --r:16px;
+}
+html,body{height:100%;background:var(--bg);color:var(--bone);font-family:var(--f-body);-webkit-font-smoothing:antialiased;overscroll-behavior:none;overflow:hidden}
+body{padding-top:var(--safe-top);padding-bottom:var(--safe-bottom);position:relative}
+/* ── Atmosphere: the purple orb, full-screen ── */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(58% 48% at 50% 30%, rgba(124,107,191,.34) 0%, rgba(109,91,176,.16) 40%, rgba(124,107,191,0) 72%),
+    radial-gradient(80% 60% at 50% 122%, rgba(201,183,156,.12) 0%, rgba(201,183,156,0) 60%),
+    radial-gradient(120% 90% at 50% 50%, rgba(8,7,14,0) 40%, rgba(5,4,9,.7) 100%);
+}
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.03;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+#app{position:relative;z-index:1;max-width:480px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Header ── */
+.header{padding:14px 22px 2px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;z-index:10}
+.header h1{font-family:var(--f-display);font-size:19px;font-weight:500;letter-spacing:.34em;text-transform:uppercase;color:var(--gold);padding-left:.34em}
+.header h1 span{color:var(--muted-2)}
+.header-left,.header-right{display:flex;align-items:center;gap:12px}
+.header-stats{display:flex;gap:14px;font-size:12px;font-weight:500;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.header-stats .elapsed{color:var(--gold)}
+.header-stats .gained{color:var(--ok)} .header-stats .gained.neg{color:var(--warm)}
+.hdr-btn{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:none;border-radius:50%;cursor:pointer;transition:color .2s,box-shadow .2s;-webkit-tap-highlight-color:transparent}
+.hdr-btn:hover{color:var(--bone)} .hdr-btn svg{width:18px;height:18px}
+
+.progress-wrap{padding:8px 22px 0;flex-shrink:0;display:none}
+.progress-bar{height:2px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--gold-deep),var(--gold),var(--gold-bright));border-radius:2px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.time-info{padding:6px 22px 0;display:none;justify-content:space-between;font-size:10.5px;font-weight:500;color:var(--muted-2);letter-spacing:.05em;flex-shrink:0;font-variant-numeric:tabular-nums}
+
+/* ── Screens ── */
+.main{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden;min-height:0}
+.screen{display:none;flex-direction:column;width:100%;height:100%;overflow-y:auto;overflow-x:hidden}
+.screen.active{display:flex}
+::-webkit-scrollbar{width:0;height:0}
+
+/* ── Buttons ── */
+.btn{border:none;cursor:pointer;font-family:var(--f-body);transition:transform .18s ease,box-shadow .3s,border-color .3s,background .2s;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:scale(.97)}
+.home-btn{flex:1;padding:15px;border-radius:var(--r);font-size:14px;font-weight:500;letter-spacing:.01em;cursor:pointer;text-align:center;border:none;font-family:var(--f-body);transition:transform .18s,box-shadow .3s,border-color .3s;-webkit-tap-highlight-color:transparent}
+.home-btn:active{transform:scale(.97)}
+.home-btn.primary{background:var(--gold-metal);color:#2a2114;font-weight:600;box-shadow:0 6px 26px -10px rgba(201,183,156,.5)}
+.home-btn.secondary{background:var(--surface);color:var(--bone);border:1px solid var(--line)}
+.empty-hint{color:var(--muted-2);font-size:13px;font-style:italic;line-height:1.6;padding:10px 0}
+
+/* ── Home ── */
+.home-content{flex:1;display:flex;flex-direction:column;padding:18px 24px calc(28px + var(--safe-bottom));overflow-y:auto}
+/* 2:3 spacers seat the group in the orb's glow (upper-centre). flex-basis 0
+   means they collapse entirely when the pinned list overflows — long lists
+   still scroll normally. */
+.home-content::before{content:'';flex:2 0 0}
+.home-content::after{content:'';flex:3 0 0}
+.home-inner{flex:0 0 auto;display:flex;flex-direction:column;gap:26px;width:100%;padding:6px 0}
+.home-greeting{font-family:var(--f-display);font-size:34px;font-weight:500;color:var(--bone);line-height:1.12}
+.home-greeting em{font-style:italic;color:var(--gold)}
+.home-sub{color:var(--muted);font-size:13.5px;margin-top:7px}
+.section-label{font-size:11px;font-weight:600;color:var(--muted-2);letter-spacing:.16em;text-transform:uppercase;margin-bottom:2px}
+.pinned-section{display:flex;flex-direction:column;gap:10px;min-height:0}
+.pinned-card{background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:15px 17px;cursor:pointer;transition:transform .18s,border-color .25s,box-shadow .3s;-webkit-tap-highlight-color:transparent}
+.pinned-card:hover{border-color:rgba(201,183,156,.32)} .pinned-card:active{transform:scale(.985)}
+.pinned-name{font-size:15.5px;font-weight:600;color:var(--bone)}
+.pinned-meta{font-size:11.5px;font-weight:400;color:var(--muted);margin-top:4px;letter-spacing:.01em}
+.pinned-bookmark{font-size:11.5px;color:var(--gold);margin-top:5px}
+.home-actions{display:flex;gap:11px}
+
+/* ── Library ── */
+.lib-header{display:flex;padding:14px 22px 0;flex-shrink:0;gap:0}
+.lib-tab{flex:1;padding:11px;text-align:center;font-size:12.5px;font-weight:500;color:var(--muted-2);cursor:pointer;border:none;border-bottom:2px solid transparent;background:none;transition:color .2s,border-color .2s;-webkit-tap-highlight-color:transparent}
+.lib-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.lib-caption{padding:8px 22px 0;font-size:11px;color:var(--muted-2);line-height:1.55}
+.lib-caption b{color:var(--muted);font-weight:600}
+.library-list{flex:1;overflow-y:auto;padding:12px 22px calc(28px + var(--safe-bottom));display:flex;flex-direction:column;gap:9px}
+.library-item{background:var(--raised);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+.lib-main{width:100%;padding:13px 15px 5px;cursor:pointer;background:none;border:none;text-align:left;color:inherit;font-family:var(--f-body);min-width:0}
+.lib-name{font-size:14.5px;font-weight:500;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-name .pin-icon{color:var(--gold);font-size:10px}
+.lib-meta{font-size:11px;font-weight:400;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-actions{display:flex;justify-content:flex-end;gap:2px;padding:0 9px 7px;flex-shrink:0}
+.lib-btn{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted-2);cursor:pointer;font-size:15px;border-radius:9px;transition:color .2s,background .2s;-webkit-tap-highlight-color:transparent}
+.lib-btn:hover{color:var(--bone);background:var(--surface)} .lib-del:hover{color:#f0928a}
+
+/* ── Editor ── */
+.editor-content{flex:1;display:flex;flex-direction:column;padding:16px 22px calc(20px + var(--safe-bottom));gap:13px;overflow:hidden;min-height:0}
+.field{background:var(--raised);color:var(--bone);border:1px solid var(--line);padding:13px 15px;border-radius:13px;font-family:var(--f-body);font-size:15px;outline:none;width:100%;transition:border-color .2s}
+.field:focus{border-color:rgba(201,183,156,.45)} .field::placeholder{color:var(--muted-2)}
+.editor-paste{display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+/* .home-btn carries flex:1 for the horizontal home row — inside this vertical
+   column it must not grow, or it balloons into a giant slab. */
+.editor-paste>.home-btn{flex:0 0 auto}
+.editor-textarea{flex:1 1 auto;min-height:140px;line-height:1.85;resize:none}
+.editor-help{font-size:11.5px;color:var(--muted-2);line-height:1.6}
+.editor-preview{display:flex;flex-direction:column;gap:11px;flex:1;min-height:0;overflow:hidden}
+.preview-summary{font-size:12.5px;color:var(--muted);flex-shrink:0}
+.trim-note{color:var(--warm)}
+.preview-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:2px 0 8px;-webkit-overflow-scrolling:touch}
+.preview-item{display:flex;align-items:center;gap:9px;background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+.preview-num{width:24px;height:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(201,183,156,.12);color:var(--gold);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.preview-body{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0}
+.preview-label{background:transparent;border:none;color:var(--bone);font-family:var(--f-body);font-size:13.5px;outline:none;width:100%}
+.preview-time-row{display:flex;align-items:center;gap:3px}
+.preview-time{width:42px;background:var(--bg-2);border:1px solid var(--line);color:var(--gold);padding:4px 4px;border-radius:7px;font-size:12px;text-align:center;outline:none;font-variant-numeric:tabular-nums}
+.preview-time:focus{border-color:rgba(201,183,156,.45)}
+.t-unit{font-size:10.5px;color:var(--muted-2);margin-right:6px}
+.preview-reorder{display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.reorder-btn{width:30px;height:22px;background:var(--surface);border:1px solid var(--line);color:var(--muted);border-radius:7px;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;transition:color .2s,background .2s;-webkit-tap-highlight-color:transparent}
+.reorder-btn:hover:not(:disabled){color:var(--gold)} .reorder-btn:disabled{opacity:.25;cursor:default}
+.preview-remove{background:none;border:none;color:var(--muted-2);cursor:pointer;font-size:14px;padding:5px;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.preview-remove:hover{color:#f0928a}
+.editor-btns{display:flex;gap:10px;flex-shrink:0;padding-top:2px}
+.editor-mini{font-size:12px;padding:9px;flex:0 0 auto}
+
+/* ── Sequences ── */
+.seq-block-name{font-size:13.5px;font-weight:500;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seq-add-btn{width:34px;height:34px;border-radius:9px;background:rgba(201,183,156,.18);border:1px solid var(--line);color:var(--gold);font-size:17px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.seq-add-btn:active{transform:scale(.92)}
+#seqBlocks{flex:0 1 auto;max-height:34%;overflow-y:auto}
+#seqAvail{flex:1 1 0;min-height:60px;overflow-y:auto}
+.seq-new-wrap{padding:10px 22px 0;flex-shrink:0}
+
+/* ── Breathing ── */
+.breathing-content{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;gap:0}
+.breath-round{font-size:11px;font-weight:500;color:var(--muted-2);letter-spacing:.12em;text-transform:uppercase;height:18px}
+.breath-orb-wrap{height:200px;width:200px;display:grid;place-items:center;margin:18px 0}
+.breath-dot{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 38% 32%,var(--gold-bright),var(--gold) 55%,var(--gold-deep));box-shadow:0 0 40px -6px rgba(201,183,156,.5),0 0 90px -28px rgba(124,107,191,.5);will-change:width,height,opacity}
+.breath-count{font-family:var(--f-display);font-size:42px;font-weight:300;color:var(--gold-bright);height:50px;line-height:50px;font-variant-numeric:tabular-nums}
+.breath-phase{font-family:var(--f-display);font-size:24px;font-weight:500;font-style:italic;color:var(--gold);height:34px}
+.breath-controls{display:flex;gap:12px;margin-top:26px}
+.breath-skip{font-size:12.5px;color:var(--muted);cursor:pointer;padding:11px 26px;border:1px solid var(--line);border-radius:50px;background:none;-webkit-tap-highlight-color:transparent;transition:transform .18s,border-color .2s}
+.breath-skip:hover{border-color:rgba(201,183,156,.4)} .breath-skip:active{transform:scale(.96)}
+
+/* ── Runner ── */
+.task-info{flex-shrink:0;text-align:center;padding:14px 24px 0;width:100%}
+.task-num{font-size:10.5px;font-weight:600;color:var(--gold);letter-spacing:.12em;text-transform:uppercase}
+.task-label{font-family:var(--f-display);font-size:21px;font-weight:500;color:var(--bone);line-height:1.3;margin-top:8px;min-height:28px}
+.task-deadline-label{font-size:9.5px;font-weight:500;color:var(--muted-2);letter-spacing:.13em;text-transform:uppercase;margin-top:10px}
+.task-deadline{font-size:30px;font-weight:300;color:var(--gold);margin-top:2px;font-variant-numeric:tabular-nums}
+.orb-zone{flex:1;display:flex;align-items:center;justify-content:center;width:100%;padding:8px;position:relative;min-height:0}
+.timer-orb{position:relative;width:min(72vw,46vh,340px);height:min(72vw,46vh,340px);border-radius:50%;flex-shrink:0;transition:box-shadow .6s ease}
+.timer-orb.running{box-shadow:var(--halo)}
+.orb-ambient{position:absolute;inset:-26%;border-radius:50%;z-index:0;opacity:0;transition:opacity .7s ease;pointer-events:none;background:radial-gradient(circle,rgba(201,183,156,.22) 0%,rgba(201,183,156,.08) 40%,transparent 68%)}
+.timer-orb.running .orb-ambient{opacity:1}
+.orb-bg{position:absolute;inset:0;border-radius:50%;background:radial-gradient(125% 125% at 50% 22%,#16101f 0%,#0b0814 76%);border:1px solid rgba(255,255,255,.05);z-index:1;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.orb-track{position:absolute;inset:0;border-radius:50%;z-index:2;background:conic-gradient(from -90deg,rgba(255,255,255,.05) 0deg,rgba(255,255,255,.05) 360deg)}
+.orb-drain{position:absolute;inset:0;border-radius:50%;z-index:3;opacity:0;transition:opacity .3s}
+.orb-inner{position:absolute;inset:13%;border-radius:50%;z-index:4;background:radial-gradient(125% 125% at 50% 20%,#120d1c 0%,#08060f 80%);border:1px solid rgba(255,255,255,.03);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.timer-digits{font-size:clamp(40px,12vw,60px);font-weight:300;letter-spacing:.01em;color:var(--bone);font-variant-numeric:tabular-nums}
+.timer-orb.over .timer-digits{color:var(--warm)}
+.timer-status{font-size:10px;font-weight:500;color:var(--muted-2);letter-spacing:.16em;text-transform:uppercase;margin-top:3px}
+.timer-orb.over .timer-status{color:var(--warm)}
+.controls-zone{flex-shrink:0;width:100%;padding:0 24px calc(18px + var(--safe-bottom));display:flex;flex-direction:column;align-items:center;gap:16px}
+.action-row{display:flex;gap:26px;align-items:center;justify-content:center}
+.icon-btn{width:52px;height:52px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .18s,border-color .2s,color .2s,box-shadow .3s;-webkit-tap-highlight-color:transparent}
+.icon-btn:active{transform:scale(.9)} .icon-btn svg{width:20px;height:20px}
+.icon-btn.done{width:72px;height:72px;background:var(--gold-metal);border:none;color:#2a2114;box-shadow:0 8px 30px -10px rgba(201,183,156,.55)}
+.icon-btn.done svg{width:30px;height:30px;stroke:#2a2114}
+.icon-btn.done:active{transform:scale(.92)}
+.icon-btn.stop:hover{border-color:rgba(240,146,138,.4);color:#f0928a}
+.icon-btn.ghost{width:44px;height:44px}
+.addtime-row{display:flex;gap:11px;align-items:center}
+.addtime-btn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:8px 18px;border-radius:24px;font-size:13px;font-weight:400;cursor:pointer;transition:transform .18s,border-color .2s,color .2s;-webkit-tap-highlight-color:transparent}
+.addtime-btn:hover{border-color:rgba(201,183,156,.4);color:var(--bone)} .addtime-btn:active{transform:scale(.93)}
+.addtime-btn .n{font-weight:600;color:var(--gold)}
+.runner-extras{display:flex;gap:10px;align-items:center;width:100%;max-width:280px}
+.jump-select{flex:1;background:var(--raised);color:var(--bone);border:1px solid var(--line);padding:9px 12px;border-radius:12px;font-family:var(--f-body);font-size:12px;outline:none}
+
+/* ── Complete ── */
+.complete-content{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;text-align:center;padding:32px}
+.complete-content h2{font-family:var(--f-display);font-size:34px;font-weight:500;font-style:italic;color:var(--gold)}
+.final-stats{font-size:14px;font-weight:300;color:var(--muted);display:flex;flex-direction:column;gap:9px;font-variant-numeric:tabular-nums}
+.final-stats span{color:var(--bone);font-weight:500;margin-left:8px}
+.restart-btn{background:var(--surface);border:1px solid var(--line);color:var(--bone);padding:14px 40px;border-radius:50px;font-family:var(--f-body);font-size:14px;font-weight:500;cursor:pointer;transition:transform .18s,border-color .2s;-webkit-tap-highlight-color:transparent}
+.restart-btn:hover{border-color:rgba(201,183,156,.4)} .restart-btn:active{transform:scale(.96)}
+
+/* ── Settings ── */
+.settings-content{flex:1;overflow-y:auto;padding:16px 22px calc(20px + var(--safe-bottom));display:flex;flex-direction:column;gap:20px}
+.setting-group{display:flex;flex-direction:column;gap:9px}
+.setting-group>label,.set-row-label{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.set-hint{font-size:11px;color:var(--muted-2);line-height:1.5;margin-top:-3px}
+.set-input{background:var(--raised);color:var(--bone);border:1px solid var(--line);padding:11px 14px;border-radius:12px;font-family:var(--f-body);font-size:13.5px;outline:none}
+.set-input:focus{border-color:rgba(201,183,156,.45)}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:3px 0}
+.set-row .set-row-label{text-transform:none;letter-spacing:0;font-size:13.5px;font-weight:500;color:var(--bone)}
+.time-pickers{display:flex;align-items:center;gap:8px}
+.time-pickers input{width:64px;background:var(--raised);border:1px solid var(--line);color:var(--gold);padding:9px;border-radius:10px;text-align:center;outline:none;font-variant-numeric:tabular-nums}
+.time-pickers span{font-size:12px;color:var(--muted-2)}
+.mini-num{width:72px;background:var(--raised);border:1px solid var(--line);color:var(--gold);padding:9px;border-radius:10px;text-align:center;outline:none}
+.switch{appearance:none;-webkit-appearance:none;width:46px;height:27px;border-radius:50px;background:var(--surface-2);border:1px solid var(--line);position:relative;cursor:pointer;flex-shrink:0;transition:background .25s}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:var(--muted);transition:transform .25s,background .25s}
+.switch:checked{background:rgba(201,183,156,.32)} .switch:checked::after{transform:translateX(19px);background:var(--gold-bright)}
+.speed-row{display:flex;align-items:center;gap:12px}
+.speed-slider{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:var(--surface-2);outline:none}
+.speed-slider::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid var(--gold-bright)}
+.speed-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--gold);border:2px solid var(--gold-bright)}
+.speed-display{font-size:14px;font-weight:500;min-width:52px;text-align:right;color:var(--gold);font-variant-numeric:tabular-nums}
+.speed-snaps{display:flex;justify-content:space-between;font-size:9px;color:var(--muted-2);padding:0 2px}
+.done-words{font-size:12.5px;color:var(--gold);line-height:1.7;background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.pron-add-row{display:flex;gap:8px;align-items:center}
+.pron-add-row input{flex:1;background:var(--raised);color:var(--bone);border:1px solid var(--line);padding:9px 11px;border-radius:10px;font-size:12px;outline:none}
+.pron-add-row input::placeholder{color:var(--muted-2)}
+.pron-add-btn{background:rgba(201,183,156,.18);border:1px solid var(--line);color:var(--gold);padding:9px 15px;border-radius:10px;font-size:14px;cursor:pointer}
+.pron-list{display:flex;flex-direction:column;gap:4px}
+.pron-item{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0}
+.pron-word{color:var(--bone);font-weight:500} .pron-arrow{color:var(--muted-2)} .pron-phonetic{color:var(--gold);flex:1}
+.pron-del{background:none;border:none;color:var(--muted-2);cursor:pointer;font-size:12px;padding:2px 6px}
+.pron-del:hover{color:#f0928a}
+.settings-actions{display:flex;flex-direction:column;gap:9px}
+.settings-actions button{background:var(--raised);border:1px solid var(--line);color:var(--bone);padding:12px;border-radius:12px;font-family:var(--f-body);font-size:13px;cursor:pointer;transition:transform .18s,border-color .2s;-webkit-tap-highlight-color:transparent}
+.settings-actions button:hover{border-color:rgba(201,183,156,.35)} .settings-actions button:active{transform:scale(.98)}
+.settings-actions .danger:hover{border-color:rgba(240,146,138,.4);color:#f0928a}
+.settings-footer{padding:18px;font-size:11px;font-weight:400;color:var(--muted-2);text-align:center;letter-spacing:.04em;flex-shrink:0}
+#importInput{display:none}
+
+/* ── Overlays ── */
+.overlay{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:100;padding:40px;text-align:center;backdrop-filter:blur(14px);background:rgba(8,7,14,.86)}
+.overlay.active{display:flex}
+.overlay h3{font-family:var(--f-display);font-size:24px;font-weight:500;font-style:italic;color:var(--gold);margin-bottom:14px}
+.overlay p{color:var(--muted);font-size:15px;max-width:300px;margin-bottom:28px;line-height:1.7}
+.overlay .btns{display:flex;gap:16px;align-items:center}
+.ov-btn{padding:14px 22px;border-radius:50px;font-family:var(--f-body);font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--bone);transition:transform .18s,border-color .2s;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:8px}
+.ov-btn:active{transform:scale(.95)}
+.ov-btn.gold{background:var(--gold-metal);color:#2a2114;border:none;box-shadow:0 6px 24px -10px rgba(201,183,156,.5)}
+.ov-btn.subtle{color:var(--muted)}
+.break-overlay{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:120;padding:34px;text-align:center}
+.break-overlay.active{display:flex}
+.break-title{font-family:var(--f-display);font-size:24px;font-weight:500;font-style:italic;color:var(--gold);margin-bottom:10px}
+.break-instruction{font-size:15px;font-weight:300;color:var(--muted);max-width:320px;line-height:1.7;margin-bottom:22px}
+.break-timer{font-size:58px;font-weight:200;color:var(--gold);font-variant-numeric:tabular-nums}
+.break-countdown{font-size:46px;font-weight:200;color:var(--gold-bright);height:56px;line-height:56px;font-variant-numeric:tabular-nums}
+.break-phase{font-size:12px;font-weight:500;color:var(--muted-2);letter-spacing:.1em;text-transform:uppercase;margin:8px 0 22px}
+
+/* ── Toast ── */
+#toast{position:fixed;left:50%;bottom:calc(28px + var(--safe-bottom));transform:translateX(-50%) translateY(12px);background:rgba(20,16,28,.95);border:1px solid var(--line);color:var(--bone);font-size:13px;font-weight:500;padding:11px 20px;border-radius:50px;z-index:200;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;backdrop-filter:blur(8px);box-shadow:0 10px 30px -12px #000}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Focus (remote / keyboard) ── */
+.focusable:focus{outline:none}
+body.remote-active .focusable:focus,
+body.remote-active button:focus,
+body.remote-active input:focus,
+body.remote-active select:focus,
+body.remote-active textarea:focus{
+  outline:none;box-shadow:0 0 0 2px var(--gold),0 0 22px -2px rgba(201,183,156,.55)!important;border-radius:14px;position:relative;z-index:5
+}
+body.remote-active .pinned-card:focus,body.remote-active .lib-main:focus{transform:scale(1.015)}
+body.remote-active .icon-btn.done:focus{box-shadow:0 0 0 3px var(--gold-bright),0 8px 30px -8px rgba(201,183,156,.6)!important}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .45s ease-out}
+
+/* ── Short screens ── */
+@media(max-height:680px){.timer-orb{width:min(64vw,40vh,280px);height:min(64vw,40vh,280px)}.task-deadline{font-size:26px}.task-label{font-size:19px}}
+@media(max-height:580px){.timer-orb{width:min(54vw,38vh,230px);height:min(54vw,38vh,230px)}.timer-digits{font-size:34px}}
+
+/* ── Landscape (any device whose screen is wider than tall & short) ── */
+@media (orientation:landscape) and (max-height:560px){
+  #app{max-width:none;padding:0 10px}
+  /* Home: greeting + actions on the left, pinned flows on the right */
+  #homeScreen .home-content{padding:10px 28px calc(16px + var(--safe-bottom));max-width:860px;margin:0 auto;width:100%}
+  #homeScreen .home-content::before,#homeScreen .home-content::after{display:none}
+  #homeScreen .home-inner{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);grid-template-rows:auto 1fr;column-gap:40px;row-gap:16px;align-items:start;padding:0}
+  #homeScreen .home-head{grid-column:1;grid-row:1;padding-top:6px}
+  #homeScreen .home-greeting{font-size:30px}
+  #homeScreen .home-actions{grid-column:1;grid-row:2;align-self:end;flex-direction:column}
+  #homeScreen .pinned-section{grid-column:2;grid-row:1/3;height:100%;overflow-y:auto;padding-top:6px}
+  /* Editor: guidance + action on the left, the writing surface on the right */
+  #editorScreen .editor-content{max-width:860px;margin:0 auto;width:100%;padding:12px 28px calc(14px + var(--safe-bottom))}
+  #editorScreen .editor-paste{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);grid-template-rows:1fr auto;column-gap:26px;row-gap:12px}
+  #editorScreen .editor-help{grid-column:1;grid-row:1;align-self:start;font-size:12px;line-height:1.7;padding-top:2px}
+  #editorScreen .editor-paste>.home-btn{grid-column:1;grid-row:2;align-self:end}
+  #editorScreen .editor-textarea{grid-column:2;grid-row:1/3;min-height:0;height:100%}
+  #runnerScreen{flex-direction:row;align-items:center;justify-content:center;gap:8px}
+  #runnerScreen .task-info{flex:1 1 0;padding:0 8px;min-width:0}
+  #runnerScreen .orb-zone{flex:0 0 auto;padding:4px}
+  .timer-orb{width:min(70vh,290px);height:min(70vh,290px)}
+  .timer-digits{font-size:clamp(34px,9vh,52px)}
+  #runnerScreen .controls-zone{flex:1 1 0;padding:0 8px calc(8px + var(--safe-bottom));gap:11px}
+  .breathing-content{padding:12px;gap:0}
+  .breath-orb-wrap{height:46vh;width:46vh;margin:4px 0}
+  .breath-count{font-size:32px;height:38px;line-height:38px}
+  .task-deadline{font-size:24px}.task-label{font-size:18px}
+}
+
+/* ════════════════════════════════════════
+   TV / large-screen 10-foot layout
+   ════════════════════════════════════════ */
+@media(min-width:1024px){
+  #app{max-width:780px}
+  body{font-size:17px}
+  .header{padding:22px 34px 4px} .header h1{font-size:24px}
+  .header-stats{font-size:15px}
+  .home-content{padding:30px 34px 40px;gap:28px;justify-content:center}
+  .home-actions{margin-top:18px}
+  .home-greeting{font-size:42px} .home-sub{font-size:16px}
+  .section-label{font-size:13px}
+  .pinned-card{padding:20px 24px;border-radius:20px} .pinned-name{font-size:20px} .pinned-meta{font-size:14px}
+  .home-btn{padding:19px;font-size:17px;border-radius:18px}
+  .lib-name{font-size:18px} .lib-meta{font-size:13px} .lib-btn{width:48px;height:48px;font-size:19px}
+  .lib-tab{font-size:16px;padding:15px}
+  .task-num{font-size:13px} .task-label{font-size:30px} .task-deadline{font-size:40px}
+  .timer-orb{width:min(52vh,440px);height:min(52vh,440px)}
+  .timer-digits{font-size:clamp(64px,9vh,104px)}
+  .icon-btn{width:66px;height:66px} .icon-btn svg{width:26px;height:26px}
+  .icon-btn.done{width:92px;height:92px} .icon-btn.done svg{width:38px;height:38px}
+  .addtime-btn{padding:12px 26px;font-size:16px}
+  .breath-phase{font-size:30px} .breath-orb-wrap{width:300px;height:300px}
+  .breath-dot{width:24px;height:24px}
+  .field,.set-input{font-size:17px;padding:15px 18px}
+  .complete-content h2{font-size:46px} .final-stats{font-size:17px}
+  .overlay h3{font-size:30px} .overlay p{font-size:18px;max-width:420px} .ov-btn{font-size:17px;padding:16px 28px}
+  .preview-label{font-size:16px} .preview-num{width:30px;height:30px;font-size:14px}
+  .reorder-btn{width:42px;height:30px;font-size:11px}
+}
+@media(min-width:1024px) and (min-aspect-ratio:13/10){
+  #app{max-width:1000px}
+  body{font-size:19px}
+  .breath-orb-wrap{width:360px;height:360px}
+  .timer-orb{width:min(56vh,520px);height:min(56vh,520px)}
+}
+body.tv .hdr-btn{width:44px;height:44px} body.tv .hdr-btn svg{width:24px;height:24px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div class="header" id="appHeader">
+    <div class="header-left">
+      <button class="hdr-btn focusable" id="backBtn" onclick="goBack()" style="display:none" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <h1 id="wordmark">Flow<span>State</span></h1>
+    </div>
+    <div class="header-right">
+      <div class="header-stats" id="headerStats" style="display:none">
+        <div class="elapsed" id="totalElapsed">00:00</div>
+        <div class="gained" id="timeGained">+0:00</div>
+      </div>
+      <button class="hdr-btn focusable" id="globalPipBtn" onclick="togglePiP()" aria-label="Picture in picture" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="11" y="10" width="7" height="5" rx="1" fill="currentColor"/></svg>
+      </button>
+      <button class="hdr-btn focusable" id="settingsBtn" onclick="openSettings()" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div></div>
+  <div class="time-info" id="timeInfo"><span id="stepCount">0 / 0</span><span id="etaInfo">ETA --:--</span></div>
+
+  <div class="main" id="mainArea">
+
+    <!-- HOME -->
+    <div class="screen" id="homeScreen">
+      <div class="home-content">
+        <div class="home-inner">
+          <div class="home-head">
+            <div class="home-greeting">Ready to <em>flow?</em></div>
+            <div class="home-sub">Pick a flow, or build one.</div>
+          </div>
+          <div class="pinned-section">
+            <div class="section-label">Pinned</div>
+            <div id="pinnedFlows"></div>
+          </div>
+          <div class="home-actions">
+            <button class="home-btn primary focusable" onclick="openNewEditor()">+ New flow</button>
+            <button class="home-btn secondary focusable" onclick="renderLibrary()">Library</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIBRARY -->
+    <div class="screen" id="libraryScreen">
+      <div class="lib-header">
+        <button class="lib-tab focusable active" data-filter="active" onclick="setLibFilter('active')">Active</button>
+        <button class="lib-tab focusable" data-filter="archived" onclick="setLibFilter('archived')">Archived</button>
+        <button class="lib-tab focusable" data-filter="all" onclick="setLibFilter('all')">All</button>
+      </div>
+      <div class="lib-caption"><b>Archive</b> hides a flow from Active but keeps it and its history. <b>Delete</b> removes it forever.</div>
+      <div class="seq-new-wrap"><button class="home-btn secondary editor-mini focusable" style="width:100%" onclick="openSequenceEditor()">⧉ New sequence — chain flows back to back</button></div>
+      <div class="library-list" id="libraryList"></div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="screen" id="editorScreen">
+      <div class="editor-content">
+        <input class="field focusable" id="editorTitle" type="text" placeholder="Flow name…" />
+        <div class="editor-paste" id="editorPaste">
+          <textarea class="field editor-textarea focusable" id="editorTextarea" placeholder="Paste or type your tasks, one per line.
+
+Making bed 3min
+Tidy desk - 5 mins
+Deep work 25
+Stretch 1:30
+Break 5"></textarea>
+          <div class="editor-help">One line = one task. Put the time at the end — <b>3min</b>, <b>5 mins</b>, <b>1:30</b>, <b>90s</b>, or a bare number (minutes). No time given falls back to your default.</div>
+          <button class="home-btn primary focusable" onclick="parseEditorInput()">Review tasks ▸</button>
+        </div>
+        <div class="editor-preview" id="editorPreview" hidden>
+          <div class="preview-summary" id="previewSummary"></div>
+          <div class="preview-list" id="previewList"></div>
+          <div class="editor-btns">
+            <button class="home-btn secondary editor-mini focusable" onclick="addEditorTask()">+ Add task</button>
+            <button class="home-btn secondary editor-mini focusable" onclick="aiDraftTimings()">✦ AI timings</button>
+          </div>
+          <button class="home-btn secondary editor-mini focusable" onclick="backToPaste()">← Back to text</button>
+          <div class="editor-btns">
+            <button class="home-btn secondary focusable" onclick="saveEditorFlow()">Save</button>
+            <button class="home-btn primary focusable" onclick="saveAndRunEditorFlow()">Save &amp; run</button>
+            <button class="home-btn secondary focusable" id="saveRunPipBtn" onclick="saveAndRunInPiP()" style="flex:0 0 auto;padding:15px 12px;font-size:12px">
+              <svg style="display:inline-block;vertical-align:middle;margin-right:4px" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="11" y="10" width="7" height="5" rx="1" fill="currentColor"/></svg>PiP
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEQUENCE EDITOR -->
+    <div class="screen" id="seqScreen">
+      <div class="editor-content">
+        <input class="field focusable" id="seqTitle" type="text" placeholder="Sequence name… (e.g. Full morning)" />
+        <div class="section-label">Blocks, in order</div>
+        <div class="preview-list" id="seqBlocks"></div>
+        <div class="section-label">Add a block</div>
+        <div class="preview-list" id="seqAvail"></div>
+        <div class="editor-btns">
+          <button class="home-btn secondary focusable" onclick="saveSequence(false)">Save</button>
+          <button class="home-btn primary focusable" onclick="saveSequence(true)">Save &amp; run</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BREATHING -->
+    <div class="screen" id="breathingScreen">
+      <div class="breathing-content">
+        <div class="breath-round" id="breathRound"></div>
+        <div class="breath-orb-wrap"><div class="breath-dot" id="breathDot"></div></div>
+        <div class="breath-count" id="breathCount"></div>
+        <div class="breath-phase" id="breathPhase">Get ready…</div>
+        <div class="breath-controls">
+          <button class="breath-skip focusable" id="breathRestart" onclick="restartBreath()">Restart</button>
+          <button class="breath-skip focusable" onclick="skipBreathing()">Skip</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RUNNER -->
+    <div class="screen" id="runnerScreen">
+      <div class="task-info">
+        <div class="task-num" id="taskNum">Task 1 of 1</div>
+        <div class="task-label fade-in" id="taskLabel"></div>
+        <div class="task-deadline-label">done by</div>
+        <div class="task-deadline" id="taskDeadline">--:--</div>
+      </div>
+      <div class="orb-zone">
+        <div class="timer-orb" id="timerOrb">
+          <div class="orb-ambient"></div>
+          <div class="orb-bg"></div>
+          <div class="orb-track"></div>
+          <div class="orb-drain" id="orbDrain"></div>
+          <div class="orb-inner">
+            <div class="timer-digits" id="timerDigits">0:00</div>
+            <div class="timer-status" id="timerStatus">remaining</div>
+          </div>
+        </div>
+      </div>
+      <div class="controls-zone">
+        <div class="action-row">
+          <button class="icon-btn focusable" id="pauseBtn" onclick="togglePauseTimer()" aria-label="Pause">
+            <svg id="pauseIcon" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>
+          </button>
+          <button class="icon-btn done focusable" id="doneBtn" onclick="markDone()" aria-label="Done">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>
+          </button>
+          <button class="icon-btn stop focusable" onclick="stopSequence()" aria-label="Stop">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          </button>
+        </div>
+        <div class="addtime-row">
+          <button class="addtime-btn focusable" onclick="addTime(1)"><span class="n">+1</span> min</button>
+          <button class="addtime-btn focusable" onclick="addTime(2)"><span class="n">+2</span> min</button>
+          <button class="icon-btn ghost focusable" id="pipBtn" onclick="togglePiP()" aria-label="Pop out timer" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="11" y="10" width="7" height="5" rx="1" fill="currentColor"/></svg>
+          </button>
+        </div>
+        <div class="runner-extras">
+          <select class="jump-select focusable" id="jumpSelect" onchange="jumpTo(this.value)"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPLETE -->
+    <div class="screen" id="completeScreen">
+      <div class="complete-content">
+        <h2>You did that.</h2>
+        <div class="final-stats" id="finalStats"></div>
+        <button class="restart-btn focusable" onclick="resetApp()">Home</button>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="settingsScreen">
+      <div class="settings-content">
+        <div class="setting-group">
+          <label>Voice</label>
+          <select class="set-input focusable" id="elVoiceSelect" onchange="saveElVoicePref()"><option value="">Loading…</option></select>
+          <button class="settings-actions focusable" onclick="previewVoice()" style="align-self:flex-start;color:var(--gold);background:none;border:1px solid var(--line);padding:9px 16px;border-radius:10px;font-size:12.5px;cursor:pointer">Test voice</button>
+        </div>
+        <div class="setting-group">
+          <label>Speed</label>
+          <div class="speed-row">
+            <input type="range" class="speed-slider focusable" id="speedSlider" min="0.5" max="2" step="0.01" value="1" oninput="updateSpeedSlider()" onchange="saveSpeedPref()" />
+            <div class="speed-display" id="speedDisplay">1.00x</div>
+          </div>
+          <div class="speed-snaps"><span>0.5</span><span>0.75</span><span>1.0</span><span>1.5</span><span>1.75</span><span>2.0</span></div>
+        </div>
+        <div class="setting-group">
+          <label>Default task time</label>
+          <div class="set-hint">Used when a task has no time written next to it.</div>
+          <div class="time-pickers">
+            <input type="number" id="defaultMin" min="0" max="120" value="5" onchange="saveDefaultTime()" class="focusable" /><span>min</span>
+            <input type="number" id="defaultSec" min="0" max="59" value="0" onchange="saveDefaultTime()" class="focusable" /><span>sec</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="set-row"><span class="set-row-label">Timer drains (empties)</span><input type="checkbox" class="switch focusable" id="drainToggle" onchange="toggleDrain()" checked></div>
+          <div class="set-row"><span class="set-row-label">Take over audio while running</span><input type="checkbox" class="switch focusable" id="takeoverToggle" onchange="toggleTakeover()" checked></div>
+          <div class="set-hint" style="margin-top:-4px">Pauses your music or podcast while a flow plays, like a navigation app.</div>
+          <div class="set-row"><span class="set-row-label">Background beat</span><input type="checkbox" class="switch focusable" id="tickingToggle" onchange="toggleTicking()" checked></div>
+          <div class="set-row"><span class="set-row-label">Voice control (say “done”)</span><input type="checkbox" class="switch focusable" id="voiceRecogToggle" onchange="toggleVoiceRecog()"></div>
+          <div class="done-words" id="doneWordsList"></div>
+        </div>
+        <div class="setting-group">
+          <label>Task list cap</label>
+          <div class="set-row"><span class="set-row-label">Limit a flow's length</span><input type="checkbox" class="switch focusable" id="enforceMaxToggle" onchange="toggleEnforceMax()" checked></div>
+          <div class="time-pickers"><input type="number" id="maxItemsInput" class="mini-num focusable" min="1" max="200" value="20" onchange="saveMaxItems()" /><span>tasks max</span></div>
+        </div>
+        <div class="setting-group">
+          <label>Browser voice (fallback)</label>
+          <select class="set-input focusable" id="browserVoiceSelect" onchange="saveBrowserVoicePref()"></select>
+        </div>
+        <div class="setting-group">
+          <label>Pronunciation</label>
+          <div class="pron-add-row">
+            <input id="pronWord" type="text" placeholder="Word" class="focusable" />
+            <input id="pronPhonetic" type="text" placeholder="Say as…" class="focusable" />
+            <button class="pron-add-btn focusable" onclick="addPron()">+</button>
+          </div>
+          <div class="pron-list" id="pronList"></div>
+        </div>
+        <div class="setting-group">
+          <label>ElevenLabs key</label>
+          <div class="set-hint">Stored only on this device. Leave blank to use the browser voice.</div>
+          <input type="password" id="elKeyInput" class="set-input focusable" placeholder="sk-…" onchange="saveElKey()" autocomplete="off" />
+        </div>
+        <div class="setting-group">
+          <label>Breaks</label>
+          <div class="set-hint">Mid-flow breaks start by themselves after this countdown. "Hold on a sec" pauses it; tap I'm ready to begin.</div>
+          <div class="time-pickers"><input type="number" id="breakCountdownInput" class="mini-num focusable" min="1" max="30" value="5" onchange="saveBreakCountdown()" /><span>sec countdown before a break starts</span></div>
+        </div>
+        <div class="setting-group">
+          <label>Alerts</label>
+          <div class="set-row"><span class="set-row-label">Vibrate with voice &amp; chimes</span><input type="checkbox" class="switch focusable" id="vibrateToggle" onchange="toggleVibrate()" checked></div>
+          <div class="set-hint" style="margin-top:-4px">Buzzes the instant FlowState speaks or chimes, so nothing slips past you with the volume down or headphones off.</div>
+        </div>
+        <div class="setting-group">
+          <label>AI (Groq)</label>
+          <div class="set-hint">Two keys, two jobs. The <b>timing</b> key drafts how long each task should really get — from your history plus a buffer. The <b>language</b> key writes the finishing line to fit the routine you just ran. Keys stay on this device.</div>
+          <input type="password" id="groqKeyTime" class="set-input focusable" placeholder="Timing key — gsk_…" onchange="AI.saveKey('time')" autocomplete="off" />
+          <input type="text" id="groqModelTime" class="set-input focusable" placeholder="llama-3.3-70b-versatile" onchange="AI.saveModel('time')" />
+          <input type="password" id="groqKeyLang" class="set-input focusable" placeholder="Language key — gsk_…" onchange="AI.saveKey('lang')" autocomplete="off" />
+          <input type="text" id="groqModelLang" class="set-input focusable" placeholder="llama-3.3-70b-versatile" onchange="AI.saveModel('lang')" />
+          <div class="time-pickers"><input type="number" id="aiBufferInput" class="mini-num focusable" min="0" max="300" value="30" onchange="saveAiBuffer()" /><span>sec buffer on AI timings</span></div>
+        </div>
+        <div class="setting-group">
+          <label>Devices &amp; sync</label>
+          <div class="set-hint">Optional. Add your Cloudflare Worker URL to share one library across phone + TV and to send flows to the TV.</div>
+          <input type="text" id="deviceNameInput" class="set-input focusable" placeholder="This device's name" onchange="saveDeviceName()" />
+          <input type="text" id="syncUrlInput" class="set-input focusable" placeholder="https://…workers.dev" onchange="saveSyncUrl()" />
+          <input type="text" id="syncSpaceInput" class="set-input focusable" placeholder="Shared key (any word, same on every device)" onchange="saveSyncSpace()" />
+          <div class="set-hint">On your television, set the device type to <b>TV</b> — that's the device that receives "play on TV" from your phone.</div>
+          <select class="set-input focusable" id="deviceTypeSelect" onchange="saveDeviceType()">
+            <option value="auto">This device is: detect automatically</option>
+            <option value="phone">This device is: Phone</option>
+            <option value="tablet">This device is: Tablet</option>
+            <option value="desktop">This device is: Laptop / desktop</option>
+            <option value="tv">This device is: TV</option>
+          </select>
+          <div class="settings-actions">
+            <button class="focusable" onclick="testSync()">Test connection</button>
+            <button class="focusable" onclick="syncNow()">Sync now</button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <label>Your data</label>
+          <div class="settings-actions">
+            <button class="focusable" onclick="exportData()">Export flows (backup)</button>
+            <button class="focusable" onclick="triggerImport()">Import flows</button>
+            <button class="focusable" onclick="exportCSV()">Download history CSV</button>
+            <button class="focusable" onclick="clearCache()">Clear voice cache</button>
+            <button class="focusable danger" onclick="clearEventsData()">Clear history</button>
+          </div>
+        </div>
+        <input type="file" id="importInput" accept=".json" onchange="handleImport(event)" />
+      </div>
+      <div class="settings-footer">BAVI FlowState v15</div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- OVERLAYS -->
+  <div class="overlay" id="confirmOverlay">
+    <p id="confirmText">Add 2 minutes?</p>
+    <div class="btns">
+      <button class="ov-btn gold focusable" onclick="confirmAddTime()">Yes, add it</button>
+      <button class="ov-btn subtle focusable" onclick="cancelAddTime()">No</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overtimeOverlay">
+    <h3 id="overtimeTitle"></h3>
+    <p id="overtimeText"></p>
+    <div class="btns">
+      <button class="ov-btn focusable" onclick="overtimeAddTime()">+2 min</button>
+      <button class="ov-btn gold focusable" onclick="overtimeDone()">Done ✓</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="nudgeOverlay">
+    <h3 id="nudgeTitle">Hey…</h3>
+    <p id="nudgeText">You still there?</p>
+    <button class="ov-btn gold focusable" onclick="dismissNudge()">I'm back</button>
+  </div>
+
+  <div class="break-overlay" id="breakScreen2">
+    <div class="break-title" id="breakTitle">Movement break</div>
+    <div class="break-instruction" id="breakInstruction"></div>
+    <div class="break-countdown" id="breakCountdown"></div>
+    <div class="break-timer" id="breakTimer">0:00</div>
+    <div class="break-phase" id="breakPhase"></div>
+    <div class="btns">
+      <button class="ov-btn subtle focusable" id="breakHold" onclick="holdBreakCountdown()" style="display:none">Hold on a sec</button>
+      <button class="ov-btn gold focusable" id="breakTap" onclick="startBreak2()">I'm ready</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+</div><!-- /app -->
+
+<script src="db.js"></script>
+<script src="tts.js"></script>
+<script src="sync.js"></script>
+<script src="nav.js"></script>
+<script src="ai.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
